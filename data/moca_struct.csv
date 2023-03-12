@@ -1,0 +1,14 @@
+"block","item","max_score","max_points"
+"visuospatial/executive","trail",1,1
+"visuospatial/executive","cube",1,1
+"visuospatial/executive","clock",3,3
+"naming","naming",3,3
+"attention","digits_forw",1,1
+"attention","digits_back",1,1
+"attention","tapping",1,1
+"attention","subtraction",5,3
+"language","repeating",2,2
+"language","fluency",1,1
+"abstraction","abstraction",2,2
+"recall","recall",5,5
+"orientation","orientation",6,6

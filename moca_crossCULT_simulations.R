@@ -4,7 +4,8 @@ setwd( dirname(rstudioapi::getSourceEditorContext()$path) )
 # list packages to be used
 pkgs <- c("dplyr", "tidyverse", # data wrangling
           "ggplot2", "patchwork", # plotting
-          "mvtnorm" # multivariate normal distribution
+          "brms", "tidybayes", # stat modelling
+          "MASS", "MBESS" # data-generating
           )
 
 # load or install each of the packages as needed
@@ -20,12 +21,38 @@ sapply( c("mods", "figs", "tabs", "sess"), function(i) if( !dir.exists(i) ) dir.
 
 # ---- simulate latent scores ----
 
-# list all score types
-scores <- c( "tmt_b", "cube", paste( "clock", c("contour","numbers","hands"), sep = "_" ), # visuospatial/executive
-             paste( "naming", c("lion","rhino","camel"), sep = "_" ), # naming
-             paste( "digit_span", c("forward","backward"), sep = "_" ), "tapping", "subtraction", # attention
-             paste( "sentence", c("john","cat"), sep = "_" ), "fluency", # language
-             paste( "similarity", c("vehicles","measurements"), sep = "_" ), # abstraction
-             paste( "memory", c("face","velvet","church","daisy","red"), sep = "_" ), # delayed recall
-             paste( "orientation", c("date","month","year","day","place","city"), sep = "_" ) # orientation
-             )
+# set-up number of subjects to generate
+N = 200
+
+# read out the structure of the MoCA test
+struct <- read.csv( "data/moca_struct.csv", sep = "," )
+
+# prepare a vector of means and SDs on latent scale and their implications for observed probabilities
+true <- struct %>% mutate(
+  # add means and SDs in latent standard normal space
+  M = 1.2, SD = .5,
+  # calculate to be observed probabilities on raw scales via standard normal cummulative function (i.e., inverse perobit)
+  prob = pnorm(M), E_score = max_score * prob
+)
+
+# prepare a correlation matrixr egarding MoCA subtasks
+cor <- with( struct, matrix( nrow = length(item), ncol = length(item), dimnames = list( item, item ) ) )
+
+# fill-in with Pearson's correlations
+for( i in rownames(cor) ) {
+  for ( j in colnames(cor) ) {
+    # r = 1 on the diagonal
+    if (i == j) cor[i,j] <- 1
+    # identical correlation for the other pairs
+    else cor[i,j] <- .5
+  }
+}
+
+# simulated a data set of latent scores
+lat <- mvrnorm( N, true$M, cor2cov( cor, true$SD) ) %>% pnorm()
+
+# generate observed values from the latent ones
+obs <- sapply( 1:N,
+               function(i) sapply( true$item, function(j) rbinom( 1, with( true, max_score[item == j] ), lat[i,j] ) )
+               ) %>%
+  t() %>% as.data.frame()

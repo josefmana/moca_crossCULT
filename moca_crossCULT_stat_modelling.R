@@ -4,7 +4,8 @@ setwd( dirname(rstudioapi::getSourceEditorContext()$path) )
 # list packages to use
 pkgs <- c( "tidyverse", "dplyr", # data wrangling
            "ggplot2", "patchwork", # plotting
-           "brms", "tidybayes"
+           "rcompanion", # Vargha and Delaney’s A calculation
+           "brms", "tidybayes" # Bayesian IRT model fitting and summaries
            )
 
 # load or install each of the packages as needed
@@ -15,6 +16,9 @@ for ( i in pkgs ) {
 
 # prepare a folder for tables, figures, models, and sessions info
 sapply( c("tabs","figs","mods","sess"), function(i) if( !dir.exists(i) ) dir.create(i) )
+
+# prepare colorblind palette
+cbPal <- c( "#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7" )
 
 
 # ---- data set prep ----
@@ -43,12 +47,15 @@ for ( i in c("ctr","exp") ) {
 # change coding of the fluency score of the patient with shifted row
 d0$ctr <- d0$ctr %>% mutate( fluency = ifelse( fluency > 1, 1, fluency ) )
 
-# add sum scores wherever missing
+# add item sum scores wherever missing
 for ( i in c("ctr","exp") ) {
-  for ( j in c("clock","naming","abstraction","frecall") ) d0[[i]][,j] <- rowSums( d0[[i]][ , grepl( paste0(j,"_"), colnames(d0[[i]]) ) ] )
+  for ( j in c("clock","naming","digits","repeating","abstraction","frecall") ) {
+    # for each participant (row hence "rowSums") sum (hence "rowSums") correct answers for items in "j"
+    d0[[i]][,j] <- rowSums( d0[[i]][ , grepl( paste0( j, "_" ), colnames( d0[[i]] ) ) ] )
+  }
 }
 
-# keep only the items list in struct
+# for the item-level analysis data set keep only the items listed in struct
 d1 <- d0$ctr[ , colnames(d0$ctr) %in% c("id",struct$item) ] %>%
   
   # add an index of the group and flag subjects to be included
@@ -76,14 +83,20 @@ for ( i in d1$id ) {
 
 }
 
-# prepare a data set with MoCA scores
-d2 <- d1 %>% mutate(
+# prepare a data set with total MoCA scores for surface-level analysis
+d2 <- d1 %>%
   # re-code "subtraction" from raw correct answers to MoCA points and calculate the sum score
-  subtraction = case_when( subtraction %in% c(5,4) ~ 3, subtraction %in% c(3,2) ~ 2, subtraction == 1 ~ 1, subtraction == 0 ~ 0 ),
-  sum_score = rowSums( .[ , which(colnames(.) == "trail"):ncol(.) ] )
-)
+  mutate( subtraction = case_when( subtraction %in% c(5,4) ~ 3, subtraction %in% c(3,2) ~ 2, subtraction == 1 ~ 1, subtraction == 0 ~ 0 ) ) %>%
+  mutate( sum_score = rowSums( .[ , which(colnames(.) == "trail"):ncol(.) ] ) )
+  
 
-# prepare a data set with all memory scores
+# switch the item-level data set (d1) to long format for IRT
+# (note that this step comes after creating d2 because d2 was built upon a wide format d1)
+d1 <- d1 %>% pivot_longer( cols = 7:ncol(.), names_to = "item", values_to = "score" ) %>%
+  # make the item name to an ordered factor for straighforward plotting
+  mutate( item = factor( item, levels = struct$item, ordered = T) )
+
+# prepare a data set with all memory scores for a task-level analysis
 d3 <- d0$ctr[ , colnames(d0$ctr) %in% c("id",with( d0, names(ctr)[ grepl( "recall_|recog", names(ctr) ) ] ) ) ] %>%
   
   # add an index of the group and flag subjects to be included
@@ -95,7 +108,7 @@ d3 <- d0$ctr[ , colnames(d0$ctr) %in% c("id",with( d0, names(ctr)[ grepl( "recal
   rbind.data.frame(
     d0$exp[ , colnames(d0$exp) %in% c("id",with( d0, names(exp)[ grepl( "recall_|recog", names(exp) ) ] ) ) ] %>%
       
-      # do the same as above with d0$ctr
+      # do the same as above but with d0$exp instead
       mutate( included = ifelse( id %in% d0$dem[ d0$dem$exp.id != "", "exp.id"], 1, 0 ), .after = 1 ) %>%
       pivot_longer( cols = 3:ncol(.), names_to = c("type","item"), names_sep = "_", values_to = "score" ) %>%
       add_column( grp = "exp", .after = 1 )
@@ -165,6 +178,72 @@ t1[5, ] <- c( "sex_m",
 
 # save as .csv
 write.table( t1[ c(1,2,5,3,4), ], "tabs/t01_sample_description.csv", sep = ",", quote = F, row.names = F )
+
+
+# ---- surface-level analysis ----
+
+# plot all raw frequencies into a grid of histograms
+d2 %>%
+  filter( included == 1 ) %>% # keep included subjects only
+  pivot_longer( cols = 7:(ncol(.)-1), names_to = "item", values_to = "score" ) %>%
+  mutate( label = sapply( item, function(i) struct[ struct$item == i , "label"] ) %>% factor( levels = struct$label, ordered = T ),
+          Group = case_when( grp == "ctrl" ~ "NaNOK", grp == "exp" ~ "JINS" ) %>% factor( levels = c("NaNOK","JINS"), ordered = T )
+          ) %>%
+  
+  # plotting proper
+  ggplot( aes(x = score, fill = Group ) ) + # colors by group
+  geom_histogram( binwidth = .3, position = position_dodge(.3) ) + # make the histograms
+  scale_x_continuous( breaks = seq(0,6,1), labels = seq(0,6,1) ) + # only integers on abscissa
+  scale_fill_manual( values = cbPal[c(5,6)] ) + # colorblind friendly color palette
+  labs( x = "Score", y = "Count" ) + # axes names
+  facet_wrap( ~ label, nrow = 4, ncol = 3, scales = "free" ) + # make a grid
+  theme_bw( base_size = 16 ) + theme( legend.position = "bottom" ) # final touches
+
+# save asi Fig 1 (for now)
+ggsave( "figs/fig1_item_scores_frequencies.jpg", dpi = 300, width = 12, height = 13.3 )
+
+# next do NHST analysis on the item scores
+t2 <- data.frame( `0` = rep(NA, length(struct$item) ), `1` = NA, `2` = NA, `3` = NA, `4` = NA, `5` = NA, `6` = NA, # frequencies
+                  W = NA, p = NA, VDA  = NA, # test statistic, p-value and effect size,
+                  row.names = struct$item )
+
+# fill-in frequencies in a format N_ctr/N_exp wherever appropriate or "-" wherever not
+for ( i in rownames(t2) ) {
+  
+  # fill-in frequencies in a format N_ctr/N_exp wherever appropriate or "-" wherever not
+  for ( j in 1:7 ) t2[i,j] <- tryCatch(
+    table( d2[ d2$included == 1, i ], d2[ d2$included == 1, "grp" ] )[as.character(j-1),] %>% paste( collapse = "/" ),
+    error = function(e) "-"
+  )
+  
+  # add stats
+  t2[ i , "W" ] <- wilcox.test( as.formula( paste0( i, " ~ grp" ) ), data = d2[ d2$included == 1, ], paired = F )$statistic %>% round(1) %>% sprintf( "%.1f", . )
+  t2[ i , "p" ] <- wilcox.test( as.formula( paste0( i, " ~ grp" ) ), data = d2[ d2$included == 1, ], paired = F )$p.value %>% round(3) %>% sprintf( "%.3f", . )
+  
+  # before the next step set seed for exact replocation of bootstapped CIs
+  set.seed(87542)
+  
+  # fill-in the effect siue (Vargha and Delaney’s A)
+  t2[ i, "VDA" ] <- paste0(
+    vda( as.formula( paste0( i, " ~ grp" ) ), data = d2[ d2$included == 1, ], ci = F, conf = .95 ) %>% round(2) %>% sprintf( "%.2f", . ), " [",
+    vda( as.formula( paste0( i, " ~ grp" ) ), data = d2[ d2$included == 1, ], ci = T, conf = .95 )[,2:3] %>% round(2) %>% sprintf( "%.2f", . ) %>% paste( collapse = ", " ), "]"
+  )
+
+}
+
+# save the table to .csv
+write.table( t2 %>% add_column( Item = struct$label, .before = 1 ), "tabs/t2_nhst_results.csv", sep = ";", quote = F, row.names = F )
+
+# for in-text reporting calculate the same for the MoCA total score
+set.seed(87542)
+print(
+  paste0(
+    "MoCA total score: W = ", wilcox.test( sum_score ~ grp, data = d2[ d2$included == 1, ], paired = F )$statistic %>% round(1) %>% sprintf( "%.1f", . ),
+    ", p = ", wilcox.test( sum_score ~ grp, data = d2[ d2$included == 1, ], paired = F )$p.value %>% round(3) %>% sprintf( "%.3f", . ),
+    ", VDA = ", vda( sum_score ~ grp, data = d2[ d2$included == 1, ], ci = F, conf = .95 ) %>% round(2) %>% sprintf( "%.2f", . ),
+    " (95% CI [", vda( sum_score ~ grp, data = d2[ d2$included == 1, ], ci = T, conf = .95 )[,2:3] %>% round(2) %>% sprintf( "%.2f", . ) %>% paste( collapse = ", " ), "])"
+  )
+)
 
 
 # ---- session info ----

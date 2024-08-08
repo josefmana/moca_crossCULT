@@ -1,48 +1,47 @@
-# set working directory (works only in RStudio)
-setwd( dirname(rstudioapi::getSourceEditorContext()$path) )
+# This is a script that analyses MoCA data via a seires of M-U tests and hierarchical Bayesian binomial model
 
-# list packages to use
-pkgs <- c( "tidyverse", "dplyr", # data wrangling
-           "ggplot2", "patchwork", # plotting
-           "rcompanion", # Vargha and Delaney’s A calculation
-           "brms", "tidybayes" # Bayesian IRT model fitting and summaries
-           )
+rm( list = ls() ) # clear environment
 
-# load or install each of the packages as needed
-for ( i in pkgs ) {
-  if ( i %in% rownames( installed.packages() ) == F ) install.packages(i) # install if it ain't installed yet
-  if ( i %in% names( sessionInfo()$otherPkgs ) == F ) library( i , character.only = T ) # load if it ain't loaded yet
-}
+# load packages
+library(here)
+library(tidyverse)
+#library(patchwork)
+library(rcompanion)
+library(lavaan)
+library(psych)
+library(brms)
 
-# prepare a folder for tables, figures, models, and sessions info
-sapply( c("tabs","figs","mods","sess"), function(i) if( !dir.exists(i) ) dir.create(i) )
+# create folders for models, figures, tables and sessions to store results and sessions info in
+# prints TRUE and creates the folder if it was not present, prints NULL if the folder was already present
+sapply( c("figures", "tables"), function(i) if( !dir.exists(i) ) dir.create(i) )
 
 # prepare colorblind palette
 cbPal <- c( "#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7" )
 
 
-# ---- data set prep ----
+# DATA SET ----
 
 # read out the structure of the MoCA test
-struct <- read.csv( "data/moca_struct.csv", sep = "," )
+struct <- read.csv( here("_data","moca_struct.csv"), sep = "," )
 
 # read the raw data
 d0 <- list(
-  dem = read.csv( "data/moca_crossCULT_data_demo.csv", sep = ";", dec = "," ),
-  ctr = read.csv( "data/moca_crossCULT_data_ctr.csv", sep = ";" ) %>% mutate( id = as.character(id) ),
-  exp = read.csv( "data/moca_crossCULT_data_exp.csv", sep = ";" )
+  dem = read.csv( here("_data","moca_crossCULT_data_demo.csv"), sep = ";", dec = "," ),
+  ctr = read.csv( here("_data","moca_crossCULT_data_ctr.csv"), sep = ";" ) %>% mutate( id = as.character(id) ),
+  exp = read.csv( here("_data","moca_crossCULT_data_exp.csv"), sep = ";" )
 )
 
 # re-code "na" to NA, then change the variables to numeric
 for ( i in names(d0)[2:3] ) {
+  
   d0[[i]][ d0[[i]] == "na" ] <- NA # changing "na" to NA
-  for ( j in names(d0[[i]])[-1] ) if( is.character( d0[[i]][,j] ) ) d0[[i]][,j] <- as.integer( d0[[i]][,j] ) # transforming to numeric
+  for ( j in names(d0[[i]])[-1] ) {
+    if( is.character( d0[[i]][,j] ) ) d0[[i]][,j] <- as.integer( d0[[i]][,j] ) # transforming to numeric
+  }
 }
 
 # re-code abstraction from 99 to 0 (99 means a concrete instead of an abstract answer)
-for ( i in c("ctr","exp") ) {
-  for ( j in paste0("abstraction_", 1:2) ) d0[[i]][,j] <- ifelse( d0[[i]][,j] == 99, 0, d0[[i]][,j] )
-}
+for ( i in c("ctr","exp") ) for ( j in paste0("abstraction_", 1:2) ) d0[[i]][,j] <- ifelse( d0[[i]][,j] == 99, 0, d0[[i]][,j] )
 
 # change coding of the fluency score of the patient with shifted row
 d0$ctr <- d0$ctr %>% mutate( fluency = ifelse( fluency > 1, 1, fluency ) )
@@ -86,13 +85,21 @@ for ( i in d1$id ) {
 # prepare a data set with total MoCA scores for surface-level analysis
 d2 <- d1 %>%
   # re-code "subtraction" from raw correct answers to MoCA points and calculate the sum score
-  mutate( subtraction = case_when( subtraction %in% c(5,4) ~ 3, subtraction %in% c(3,2) ~ 2, subtraction == 1 ~ 1, subtraction == 0 ~ 0 ) ) %>%
+  mutate(
+    subtraction = case_when(
+      subtraction %in% c(5,4) ~ 3,
+      subtraction %in% c(3,2) ~ 2,
+      subtraction == 1 ~ 1,
+      subtraction == 0 ~ 0
+    )
+  ) %>%
   mutate( sum_score = rowSums( .[ , which(colnames(.) == "trail"):ncol(.) ] ) )
   
 
 # switch the item-level data set (d1) to long format for IRT
 # (note that this step comes after creating d2 because d2 was built upon a wide format d1)
-d1 <- d1 %>% pivot_longer( cols = 7:ncol(.), names_to = "item", values_to = "score" ) %>%
+d1 <- d1 %>%
+  pivot_longer( cols = 7:ncol(.), names_to = "item", values_to = "score" ) %>%
   # make the item name to an ordered factor for straighforward plotting
   mutate( item = factor( item, levels = struct$item, ordered = T) )
 
@@ -116,15 +123,19 @@ d3 <- d0$ctr[ , colnames(d0$ctr) %in% c("id",with( d0, names(ctr)[ grepl( "recal
   ) %>%
   
   # add order of each item in the list
-  mutate( order = case_when( item == "face" ~ "i1",
-                             item == "velvet" ~ "i2",
-                             item == "church" ~ "i3",
-                             item %in% c("daisy","rye") ~ "i4",
-                             item %in% c("red","salt") ~ "i5"
-                             ), .before = "score" )
+  mutate(
+    order = case_when(
+      item == "face" ~ "i1",
+      item == "velvet" ~ "i2",
+      item == "church" ~ "i3",
+      item %in% c("daisy","rye") ~ "i4",
+      item %in% c("red","salt") ~ "i5"
+    ),
+    .before = "score"
+  )
 
 
-# ---- descriptive stats ----
+# DESCRIPTIVES ----
 
 # loop through control and experimental groups
 t1 <- lapply( unique(d2$grp), function(i)
@@ -159,28 +170,43 @@ t1 <- lapply( unique(d2$grp), function(i)
   relocate( 1,2,4,6,8,3,5,7,9 )
 
 # add sex numbers
-t1[5, ] <- c( "sex_m",
-              
-              # non-sex way to extract the numbers
-              table( d2[ with( d2, included == 1 & grp == "ctrl" ), "sex" ] ) %>% as.data.frame() %>% select(Freq) %>%
-                mutate( N = paste0( Freq, " (", ( 100 * Freq / sum(Freq) ) %>% round(2) %>% sprintf( "%.2f", . ), "%)" ) ) %>%
-                select(N) %>% slice(1),
-              # blank cells
-              rep("-",3),
-              
-              # the same for experimental group
-              table( d2[ with( d2, included == 1 & grp == "exp" ), "sex" ] ) %>% as.data.frame() %>% select(Freq) %>%
-                mutate( N = paste0( Freq, " (", ( 100 * Freq / sum(Freq) ) %>% round(2) %>% sprintf( "%.2f", . ), "%)" ) ) %>%
-                select(N) %>% slice(1),
-              # blank cells
-              rep("-",3)
-              )
+t1[5, ] <- c(
+  
+  "sex_m",
+  
+  # non-sex way to extract the numbers
+  table( d2[ with( d2, included == 1 & grp == "ctrl" ), "sex" ] ) %>%
+    as.data.frame() %>%
+    select(Freq) %>%
+    mutate( N = paste0( Freq, " (", ( 100 * Freq / sum(Freq) ) %>% round(2) %>% sprintf( "%.2f", . ), "%)" ) ) %>%
+    select(N) %>%
+    slice(1),
+  
+  # blank cells
+  rep("-",3),
+  
+  # the same for experimental group
+  table( d2[ with( d2, included == 1 & grp == "exp" ), "sex" ] ) %>% as.data.frame() %>% select(Freq) %>%
+    mutate( N = paste0(Freq, " (", ( 100 * Freq / sum(Freq) ) %>% round(2) %>% sprintf( "%.2f", . ), "%)") ) %>%
+    select(N) %>%
+    slice(1),
+  
+  # blank cells
+  rep("-",3)
+  
+)
 
 # save as .csv
-write.table( t1[ c(1,2,5,3,4), ], "tabs/t01_sample_description.csv", sep = ",", quote = F, row.names = F )
+write.table(
+  x = t1[ c(1,2,5,3,4), ],
+  file = here("tabs","t01_sample_description.csv"),
+  sep = ",",
+  quote = F,
+  row.names = F
+)
 
 
-# ---- surface-level analysis ----
+# SURFACE-LEVEL ANALYSIS ----
 
 # plot all raw frequencies into a grid of histograms
 d2 %>%
@@ -245,8 +271,3 @@ print(
   )
 )
 
-
-t# ---- session info ----
-
-# write the sessionInfo() into a .txt file
-capture.output( sessionInfo(), file = "sess/moca_crossCULT_stat_modelling.txt" )

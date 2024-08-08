@@ -187,7 +187,7 @@ d2 %>%
   filter( included == 1 ) %>% # keep included subjects only
   pivot_longer( cols = 7:(ncol(.)-1), names_to = "item", values_to = "score" ) %>%
   mutate( label = sapply( item, function(i) struct[ struct$item == i , "label"] ) %>% factor( levels = struct$label, ordered = T ),
-          Group = case_when( grp == "ctrl" ~ "NaNOK", grp == "exp" ~ "JINS" ) %>% factor( levels = c("NaNOK","JINS"), ordered = T )
+          Group = case_when( grp == "ctrl" ~ "MoCA", grp == "exp" ~ "MoCA-WLE" ) %>% factor( levels = c("MoCA","MoCA-WLE"), ordered = T )
           ) %>%
   
   # plotting proper
@@ -232,7 +232,7 @@ for ( i in rownames(t2) ) {
 }
 
 # save the table to .csv
-write.table( t2 %>% add_column( Item = struct$label, .before = 1 ), "tabs/t2_nhst_results.csv", sep = ";", quote = F, row.names = F )
+write.table( t2 %>% add_column( Item = struct$label, .before = 1 ), "tabs/t1_nhst_results.csv", sep = ";", quote = F, row.names = F )
 
 # for in-text reporting calculate the same for the MoCA total score
 set.seed(87542)
@@ -246,7 +246,7 @@ print(
 )
 
 
-# ---- session info ----
+t# ---- session info ----
 
 # write the sessionInfo() into a .txt file
 capture.output( sessionInfo(), file = "sess/moca_crossCULT_stat_modelling.txt" )

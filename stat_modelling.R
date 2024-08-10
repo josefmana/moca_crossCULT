@@ -198,7 +198,7 @@ t1[5, ] <- c(
   "sex_m",
   
   # non-sex way to extract the numbers
-  table( d2[ with( d2, included == 1 & grp == "ctrl" ), "sex" ] ) %>%
+  table( ( d2[ with( d2, included == 1 & grp == "ctrl" ), ] %>% mutate(sex = gsub( " ", "", gsub("ž","z",sex) ) ) )$sex ) %>%
     as.data.frame() %>%
     select(Freq) %>%
     mutate( N = paste0( Freq, " (", ( 100 * Freq / sum(Freq) ) %>% round(2) %>% sprintf( "%.2f", . ), "%)" ) ) %>%
@@ -209,7 +209,9 @@ t1[5, ] <- c(
   rep("-",3),
   
   # the same for experimental group
-  table( d2[ with( d2, included == 1 & grp == "exp" ), "sex" ] ) %>% as.data.frame() %>% select(Freq) %>%
+  table( ( d2[ with( d2, included == 1 & grp == "ctrl" ), ] %>% mutate(sex = gsub( " ", "", gsub("ž","z",sex) ) ) )$sex ) %>%
+    as.data.frame() %>%
+    select(Freq) %>%
     mutate( N = paste0(Freq, " (", ( 100 * Freq / sum(Freq) ) %>% round(2) %>% sprintf( "%.2f", . ), "%)") ) %>%
     select(N) %>%
     slice(1),
@@ -284,7 +286,7 @@ for ( i in rownames(t2) ) {
   t2[ i, "VDA" ] <- paste0(
 
     vda( as.formula( paste0( i, " ~ grp" ) ), data = d2[ d2$included == 1, ], ci = F, conf = .95 ) %>% round(2) %>% sprintf( "%.2f", . ), " [",
-    vda( as.formula( paste0( i, " ~ grp" ) ), data = d2[ d2$included == 1, ], ci = T, conf = .95 )[,2:3] %>% round(2) %>% sprintf( "%.2f", . ) %>% paste( collapse = ", " ), "]"
+    vda( as.formula( paste0( i, " ~ grp" ) ), data = d2[ d2$included == 1, ], ci = T, conf = .95 )[ ,2:3] %>% round(2) %>% sprintf( "%.2f", . ) %>% paste( collapse = ", " ), "]"
 
   )
 
@@ -292,7 +294,7 @@ for ( i in rownames(t2) ) {
 
 # save the table to .csv
 write.table(
-  x = add_column(t2, Item = struct$label, .before = 1),
+  x = add_column(t2, Domain = struct$label, .before = 1),
   file = here("tables","nhst_results.csv"),
   sep = ";",
   quote = F,
@@ -382,6 +384,7 @@ pp_check( fit1$dif, type = "bars_grouped", group = "item", ndraws = NULL) +
     title = "Posterior predictive check of the Multilevel Binomial regression with Differential Item Functioning",
     subtitle = "Bars represent counts of each score as observed in the sample,\npoints and whiskers represent posterior medians and 95% posterior probability intervals as predicted by the model"
   ) +
+  scale_x_continuous(breaks = 0:6, labels = 0:6) +
   theme_grey() +
   theme(
     legend.position = "none",
@@ -441,7 +444,7 @@ fig1b <- fit1$dif %>%
       levels = rev(struct$label),
       ordered = T
     ),
-    target = if_else(item == "Free recall", T, F)
+    target = if_else(item == "Free Recall", T, F)
   ) %>%
   
   ggplot() +
@@ -466,6 +469,14 @@ ggsave(
   height = 10
 )
 
+# extract the item difference of Free Recall for abstract
+fit1$dif %>%
+  
+  spread_draws(r_item[domain,group]) %>%
+  pivot_wider(names_from = "group", values_from = "r_item") %>%
+  median_qi(diff = -grpexp - (-grpctrl), .width = .95) %>%
+  filter(domain == "Free.Recall") %>%
+  mutate( across( where(is.numeric), ~round(.x,2) ) )
 
 ## person parameters ----
 

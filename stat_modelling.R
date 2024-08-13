@@ -1,4 +1,8 @@
-# This is a script that analyses MoCA data via a seires of M-U tests and hierarchical Bayesian binomial model
+# This is a script that analyses MoCA data via a series of M-U tests and multilevel Bayesian binomial model
+#
+# The analysis works for all but the 'DESCRIPTIVES' section because we do not share continuous demography data
+# for privacy reasons to achiev k-anonymity (on k ≥ 5 level)
+
 
 rm( list = ls() ) # clear environment
 options( mc.cores = parallel::detectCores() ) # use all parallel CPU cores
@@ -25,17 +29,18 @@ cbPal <- c( "#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#
 # DATA SET ----
 
 # read out the structure of the MoCA test
-struct <- read.csv( here("_data","moca_struct.csv"), sep = "," )
+struct <- read.csv( here("data","moca_struct.csv"), sep = "," )
 
 # read the raw data
 d0 <- list(
-  dem = read.csv( here("_data","data_demo.csv"), sep = ";", dec = "," ),
-  ctr = read.csv( here("_data","data_ctr.csv"), sep = ";" ) %>% mutate( id = as.character(id) ),
-  exp = read.csv( here("_data","data_exp.csv"), sep = ";" )
+  #dem = read.csv( here("data","_data_demo.csv"), sep = ";", dec = "," ), # hashtag this line as I do not share full demography variables for privacy reasons
+  dem = read.csv( here("data","data_demo.csv"), sep = ";", dec = "," ),
+  ctr = read.csv( here("data","data_ctr.csv"), sep = ";" ) %>% mutate( id = as.character(id) ),
+  exp = read.csv( here("data","data_exp.csv"), sep = ";" )
 )
 
 # re-code "na" to NA, then change the variables to numeric
-for ( i in names(d0)[2:3] ) {
+for ( i in c("ctr","exp") ) {
   
   d0[[i]][ d0[[i]] == "na" ] <- NA # changing "na" to NA
   for ( j in names(d0[[i]])[-1] ) {
@@ -282,7 +287,7 @@ for ( i in rownames(t2) ) {
   # before the next step set seed for exact replocation of bootstapped CIs
   set.seed(87542)
   
-  # fill-in the effect siue (Vargha and Delaney’s A)
+  # fill-in the effect size (Vargha and Delaney’s A)
   t2[ i, "VDA" ] <- paste0(
 
     vda( as.formula( paste0( i, " ~ grp" ) ), data = d2[ d2$included == 1, ], ci = F, conf = .95 ) %>% round(2) %>% sprintf( "%.2f", . ), " [",

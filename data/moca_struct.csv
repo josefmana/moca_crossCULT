@@ -1,0 +1,13 @@
+block,item,label,max_score,max_points
+visuospatial/executive,trail,Trail,1,1
+visuospatial/executive,cube,Cube,1,1
+visuospatial/executive,clock,Clock,3,3
+naming,naming,Naming,3,3
+attention,digits,Digit Span,2,2
+attention,tapping,Tapping,1,1
+attention,subtraction,Subtraction,5,3
+language,repeating,Repeating,2,2
+language,fluency,Verbal Fluency,1,1
+abstraction,abstraction,Abstraction,2,2
+recall,frecall,Free Recall,5,5
+orientation,orientation,Orientation,6,6

@@ -9,6 +9,7 @@ models/**/*.rds
 **/*.ttt
 **/*.fff
 **/*.log
+**/.*xlsx
 
 # ignore all _ folders & files
 _*/

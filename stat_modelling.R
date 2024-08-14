@@ -33,8 +33,8 @@ struct <- read.csv( here("data","moca_struct.csv"), sep = "," )
 
 # read the raw data
 d0 <- list(
-  #dem = read.csv( here("data","_data_demo.csv"), sep = ";", dec = "," ), # hashtag this line as I do not share full demography variables for privacy reasons
-  dem = read.csv( here("data","data_demo.csv"), sep = ";", dec = "," ),
+  dem = read.csv( here("data","_data_demo.csv"), sep = ";", dec = "," ), # hashtag this line as I do not share full demography variables for privacy reasons
+  #dem = read.csv( here("data","data_demo.csv"), sep = ";", dec = "," ),
   ctr = read.csv( here("data","data_ctr.csv"), sep = ";" ) %>% mutate( id = as.character(id) ),
   exp = read.csv( here("data","data_exp.csv"), sep = ";" )
 )
@@ -401,7 +401,7 @@ pp_check( fit1$dif, type = "bars_grouped", group = "item", ndraws = NULL) +
 ggsave(
   plot = last_plot(),
   filename = here("figures","ppc.jpg"),
-  dpi = 300,
+  dpi = 600,
   width = 10,
   height = 9
 )
@@ -469,7 +469,7 @@ fig1b <- fit1$dif %>%
 ggsave(
   plot = last_plot(),
   filename = here("figures","item_parameters.jpg"),
-  dpi = 300,
+  dpi = 600,
   width = 9,
   height = 10
 )
@@ -516,7 +516,7 @@ fit1$dif %>%
 ggsave(
   plot = last_plot(),
   filename = here("figures","person_parameters.jpg"),
-  dpi = 300,
+  dpi = 600,
   width = 12,
   height = 9
 )
